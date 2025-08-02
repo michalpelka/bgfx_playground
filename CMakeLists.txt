@@ -3,11 +3,15 @@ project(my_bgfx_app)
 
 set(CMAKE_CXX_STANDARD 17)
 
+find_package(Eigen3 3.3 REQUIRED NO_MODULE)
+
 # Add bgfx.cmake
 add_subdirectory(3rd/bgfx.cmake)
 
 # Add executable
 
+
+add_subdirectory(3rd/LASzip)
 
 # Link only bgfx (not example-common!)
 
@@ -38,8 +42,8 @@ bgfx_compile_shaders(
 )
 
 # Pass output path to the app
-add_executable(my_bgfx_app main.cpp shaders/fs_triangle.sc shaders/vs_triangle.sc)
-target_link_libraries(my_bgfx_app PRIVATE bgfx bx)
+add_executable(my_bgfx_app main.cpp color_las_loader.cpp shaders/fs_triangle.sc shaders/vs_triangle.sc)
+target_link_libraries(my_bgfx_app PRIVATE bgfx bx bimg)
 # Include path for helper header
 target_include_directories(my_bgfx_app PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-target_link_libraries(my_bgfx_app PRIVATE X11::X11 ${GLFW_LIBRARIES})
+target_link_libraries(my_bgfx_app PRIVATE X11::X11 ${GLFW_LIBRARIES} Eigen3::Eigen  laszip)

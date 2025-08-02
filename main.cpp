@@ -2,6 +2,8 @@
 #include <bgfx/platform.h>
 #include <bgfx/bgfx.h>
 #include "bgfx_utils.h"
+#include "bx/pixelformat.h"
+#include "color_las_loader.h"
 #if defined(__linux__)
     #define GLFW_EXPOSE_NATIVE_X11
     #include <GLFW/glfw3native.h>
@@ -16,12 +18,23 @@
 
 #include <glm/glm.hpp>
 
+#include "3rd/bgfx.cmake/bgfx/src/bgfx_p.h"
+#include "3rd/bgfx.cmake/bx/include/bx/math.h"
+
+
 struct NormalColorVertex
 {
-    glm::vec2 position;
+    glm::vec3 position;
     uint32_t color;
 };
 int main() {
+    std::string fn = "/home/michal/Downloads/4979_281539_M-34-100-B-d-1-2-3.laz";
+
+
+    auto points = mandeye::load(fn);
+    std::cout << "Loaded " << points.size() << " points from " << fn << std::endl;
+
+
     if (!glfwInit()) return 1;
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -49,24 +62,31 @@ int main() {
 
     bgfx::VertexLayout color_vertex_layout;
     color_vertex_layout.begin()
-                       .add(bgfx::Attrib::Position, 2, bgfx::AttribType::Float)
+                       .add(bgfx::Attrib::Position, 3, bgfx::AttribType::Float)
                        .add(bgfx::Attrib::Color0, 4, bgfx::AttribType::Uint8, true)
                        .end();
 
-    NormalColorVertex kTriangleVertices[] =
-        {
-        {{-0.5f, -0.5f}, 0x339933FF},
-        {{0.5f, -0.5f}, 0x993333FF},
-        {{0.0f, 0.5f}, 0x333399FF},
-};
+    // NormalColorVertex kTriangleVertices[] ;
+//     const uint16_t kTriangleIndices[] =
+//             {
+//         0, 1, 2,
+// };
+    std::vector<NormalColorVertex> kTriangleVertices(points.size());
 
-    const uint16_t kTriangleIndices[] =
-            {
-        0, 1, 2,
-};
+    auto fp = points.front();
+    for (size_t i = 0; i < points.size(); i++)
+    {
+        Eigen::Vector3d p = points[i].point- fp.point;
+        kTriangleVertices[i].position.x = p.x();
+        kTriangleVertices[i].position.y = p.y();
+        kTriangleVertices[i].position.z = p.z();
 
-    bgfx::VertexBufferHandle vertex_buffer = bgfx::createVertexBuffer(bgfx::makeRef(kTriangleVertices, sizeof(kTriangleVertices)), color_vertex_layout);
-    bgfx::IndexBufferHandle index_buffer = bgfx::createIndexBuffer(bgfx::makeRef(kTriangleIndices, sizeof(kTriangleIndices)));
+        float colors[4] = {points[i].rgb[0]/255.f, points[i].rgb[1]/255.f, points[i].rgb[2]/255.f, points[i].rgb[3]/255.f};
+
+        bx::packRgba8U(&kTriangleVertices[i].color, colors);
+    }
+    bgfx::VertexBufferHandle vertex_buffer = bgfx::createVertexBuffer(bgfx::makeRef(kTriangleVertices.data(), sizeof(NormalColorVertex)*kTriangleVertices.size()), color_vertex_layout);
+    //bgfx::IndexBufferHandle index_buffer = bgfx::createIndexBuffer(bgfx::makeRef(kTriangleIndices, sizeof(kTriangleIndices)));
 
     const bgfx::Memory* vs_mem = nullptr;
     const bgfx::Memory* fs_mem = nullptr;
@@ -94,6 +114,9 @@ int main() {
     bgfx::ShaderHandle fsh = bgfx::createShader(fs_mem);
     bgfx::ProgramHandle program = bgfx::createProgram(vsh, fsh, true);
 
+
+    bgfx::UniformHandle u_mvp = bgfx::createUniform("u_mvp", bgfx::UniformType::Mat4);
+
     while (!glfwWindowShouldClose(win)) {
         glfwPollEvents();
         bgfx::dbgTextClear();
@@ -104,20 +127,31 @@ int main() {
         bgfx::setViewRect(0, 0, 0, w, h);
         bgfx::setViewClear(0, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x303030ff, 1.0f, 0);
 
+        float view[16];
+        float proj[16];
+        bx::mtxLookAt(view, bx::Vec3{0.0f, 0.0f, -2.0f}, bx::Vec3{0.0f, 0.0f, 0.0f});
+        bx::mtxProj(proj, 60.0f, float(w) / float(h), 0.1f, 100.0f, bgfx::getCaps()->homogeneousDepth);
+        float model[16];
+        bx::mtxIdentity(model);
+        bx::mtxRotateY(model, bx::kPi * (float)glfwGetTime() * 0.1f);
+        float mvp[16];
+        bx::mtxMul(mvp, model, view);
+        bx::mtxMul(mvp, mvp, proj);
+        bgfx::setUniform(u_mvp, mvp);
 
-        bgfx::setState(
-        BGFX_STATE_WRITE_R
-                | BGFX_STATE_WRITE_G
-                | BGFX_STATE_WRITE_B
-                | BGFX_STATE_WRITE_A
-        );
-
+        bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_PT_POINTS);
         bgfx::setVertexBuffer(0, vertex_buffer);
-        bgfx::setIndexBuffer(index_buffer); // not needed if you don't do indexed draws
         bgfx::submit(0, program);
 
         bgfx::frame();
     }
+    bgfx::destroy(vertex_buffer);
+    // bgfx::destroy(index_buffer);
+    bgfx::destroy(vsh);
+    bgfx::destroy(fsh);
+    bgfx::destroy(program);
+    bgfx::release(vs_mem);
+    bgfx::release(fs_mem);
 
     bgfx::shutdown();
     glfwDestroyWindow(win);
