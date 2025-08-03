@@ -17,9 +17,14 @@
 #include "shaders/spirv/fs_triangle.sc.bin.h"
 
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
+#include "3rd/bgfx.cmake/bgfx/examples/common/imgui/imgui.h"
 #include "3rd/bgfx.cmake/bgfx/src/bgfx_p.h"
 #include "3rd/bgfx.cmake/bx/include/bx/math.h"
+
+#include "common/imgui/imgui.h"
 
 
 struct NormalColorVertex
@@ -27,6 +32,33 @@ struct NormalColorVertex
     glm::vec3 position;
     uint32_t color;
 };
+
+
+float translate_x =0.0, translate_y = 0.0;
+float translate_z = -500.0;
+float rotate_x = 0.0, rotate_y = 0.0;
+float mouse_old_x, mouse_old_y = 0.0;
+void scroll_callback(GLFWwindow *window, double xoffset, double yoffset) {
+    translate_z += yoffset * 10.0f;
+}
+
+void mouse_callback(GLFWwindow *window, double x, double y) {
+    float dx, dy;
+    dx = (float)(x - mouse_old_x);
+    dy = (float)(y - mouse_old_y);
+    mouse_old_x = x;
+    mouse_old_y = y;
+
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+        rotate_x += dy * 0.2f; // * mouse_sensitivity;
+        rotate_y += dx * 0.2f; // * mouse_sensitivity;
+    }
+    if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) {
+        translate_x += dx * 0.05f ;//* mouse_sensitivity;
+        translate_y -= dy * 0.05f ;//* mouse_sensitivity;
+    }
+}
+
 int main() {
     std::string fn = "/home/michal/Downloads/4979_281539_M-34-100-B-d-1-2-3.laz";
 
@@ -39,6 +71,9 @@ int main() {
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     GLFWwindow* win = glfwCreateWindow(1280, 720, "bgfx triangle", nullptr, nullptr);
+    glfwSetCursorPosCallback(win, mouse_callback);
+    glfwSetScrollCallback(win, scroll_callback);
+
 
     bgfx::PlatformData pd{};
 #if defined(_WIN32)
@@ -51,7 +86,7 @@ int main() {
 #endif
 
     bgfx::Init init;
-    init.type = bgfx::RendererType::OpenGL;
+    init.type = bgfx::RendererType::Vulkan;
     init.platformData = pd;
     init.resolution.width = 1280;
     init.resolution.height = 720;
@@ -59,6 +94,7 @@ int main() {
     bgfx::init(init);
     bgfx::setDebug(BGFX_DEBUG_TEXT);
 
+    imguiCreate();
 
     bgfx::VertexLayout color_vertex_layout;
     color_vertex_layout.begin()
@@ -83,7 +119,7 @@ int main() {
 
         float colors[4] = {points[i].rgb[0]/255.f, points[i].rgb[1]/255.f, points[i].rgb[2]/255.f, points[i].rgb[3]/255.f};
 
-        bx::packRgba8U(&kTriangleVertices[i].color, colors);
+        bx::packRgba8(&kTriangleVertices[i].color, colors);
     }
     bgfx::VertexBufferHandle vertex_buffer = bgfx::createVertexBuffer(bgfx::makeRef(kTriangleVertices.data(), sizeof(NormalColorVertex)*kTriangleVertices.size()), color_vertex_layout);
     //bgfx::IndexBufferHandle index_buffer = bgfx::createIndexBuffer(bgfx::makeRef(kTriangleIndices, sizeof(kTriangleIndices)));
@@ -126,25 +162,45 @@ int main() {
         bgfx::reset(w, h, BGFX_RESET_VSYNC);
         bgfx::setViewRect(0, 0, 0, w, h);
         bgfx::setViewClear(0, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x303030ff, 1.0f, 0);
+        auto view = glm::mat4(1.0f);
+        view = glm::translate(view, glm::vec3(translate_x, translate_y, translate_z));
+        view = glm::rotate(view, glm::radians(rotate_x), glm::vec3(1.0f, 0.0f, 0.0f));
+        view = glm::rotate(view, glm::radians(rotate_y), glm::vec3(0.0f, 0.0f, 1.0f));
 
-        float view[16];
-        float proj[16];
-        bx::mtxLookAt(view, bx::Vec3{0.0f, 0.0f, -2.0f}, bx::Vec3{0.0f, 0.0f, 0.0f});
-        bx::mtxProj(proj, 60.0f, float(w) / float(h), 0.1f, 100.0f, bgfx::getCaps()->homogeneousDepth);
-        float model[16];
-        bx::mtxIdentity(model);
-        bx::mtxRotateY(model, bx::kPi * (float)glfwGetTime() * 0.1f);
-        float mvp[16];
-        bx::mtxMul(mvp, model, view);
-        bx::mtxMul(mvp, mvp, proj);
-        bgfx::setUniform(u_mvp, mvp);
+        glm::mat4 projection =glm::perspective(glm::radians(45.0f), (float)w / (float)h, 0.1f, 100000.0f);
+        glm::mat4 mvp = projection * view;
+        bgfx::setUniform(u_mvp, &mvp[0]);
 
         bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_PT_POINTS);
         bgfx::setVertexBuffer(0, vertex_buffer);
         bgfx::submit(0, program);
 
+        {
+            // Get GLFW window size and mouse position
+            int win_width, win_height;
+            glfwGetFramebufferSize(win, &win_width, &win_height);
+
+            double mouse_x, mouse_y;
+            glfwGetCursorPos(win, &mouse_x, &mouse_y);
+
+            // Compose mouse button bitmask
+            uint8_t mouse_buttons = 0;
+            if (glfwGetMouseButton(win, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) mouse_buttons |= IMGUI_MBUT_LEFT;
+            if (glfwGetMouseButton(win, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS) mouse_buttons |= IMGUI_MBUT_RIGHT;
+            if (glfwGetMouseButton(win, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS) mouse_buttons |= IMGUI_MBUT_MIDDLE;
+            imguiBeginFrame(static_cast<int>(mouse_x), static_cast<int>(mouse_y), mouse_buttons, 0, w, h);
+
+        }
+
+
+        ImGui::Begin("Controls");
+        ImGui::Text("ImGui FPS: %.1f (%.3f ms/frame)", ImGui::GetIO().Framerate, 1000.0f / ImGui::GetIO().Framerate);
+
+        ImGui::End();
+        imguiEndFrame();
         bgfx::frame();
     }
+    imguiDestroy();
     bgfx::destroy(vertex_buffer);
     // bgfx::destroy(index_buffer);
     bgfx::destroy(vsh);

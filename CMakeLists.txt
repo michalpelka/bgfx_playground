@@ -10,7 +10,7 @@ add_subdirectory(3rd/bgfx.cmake)
 
 # Add executable
 
-
+include_directories(3rd/bgfx.cmake/bgfx/examples)
 add_subdirectory(3rd/LASzip)
 
 # Link only bgfx (not example-common!)
@@ -43,7 +43,7 @@ bgfx_compile_shaders(
 
 # Pass output path to the app
 add_executable(my_bgfx_app main.cpp color_las_loader.cpp shaders/fs_triangle.sc shaders/vs_triangle.sc)
-target_link_libraries(my_bgfx_app PRIVATE bgfx bx bimg)
+target_link_libraries(my_bgfx_app PRIVATE bgfx bx bimg  example-common)
 # Include path for helper header
 target_include_directories(my_bgfx_app PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(my_bgfx_app PRIVATE X11::X11 ${GLFW_LIBRARIES} Eigen3::Eigen  laszip)
