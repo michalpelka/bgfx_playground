@@ -25,7 +25,7 @@
 #include "3rd/bgfx.cmake/bx/include/bx/math.h"
 
 #include "common/imgui/imgui.h"
-
+#include <optional>
 
 struct NormalColorVertex
 {
@@ -59,18 +59,21 @@ void mouse_callback(GLFWwindow *window, double x, double y) {
     }
 }
 
-int main() {
-    std::string fn = "/home/michal/Downloads/4979_281539_M-34-100-B-d-1-2-3.laz";
+int main(int argc, char** argv) {
+    std::vector<std::string> fns;
+    for (int i = 1; i < argc; i++) {
+        fns.push_back (argv[i]);
+    }
+    for (const auto &fn : fns) {
+        std::cout << "File: " << fn << std::endl;
+    }
 
-
-    auto points = mandeye::load(fn);
-    std::cout << "Loaded " << points.size() << " points from " << fn << std::endl;
 
 
     if (!glfwInit()) return 1;
 
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-    GLFWwindow* win = glfwCreateWindow(1280, 720, "bgfx triangle", nullptr, nullptr);
+    GLFWwindow* win = glfwCreateWindow(1280, 720, "bgfx pointcloud", nullptr, nullptr);
     glfwSetCursorPosCallback(win, mouse_callback);
     glfwSetScrollCallback(win, scroll_callback);
 
@@ -90,7 +93,7 @@ int main() {
     init.platformData = pd;
     init.resolution.width = 1280;
     init.resolution.height = 720;
-    init.resolution.reset = BGFX_RESET_VSYNC;
+    //init.resolution.reset = BGFX_RESET_VSYNC;
     bgfx::init(init);
     bgfx::setDebug(BGFX_DEBUG_TEXT);
 
@@ -102,27 +105,38 @@ int main() {
                        .add(bgfx::Attrib::Color0, 4, bgfx::AttribType::Uint8, true)
                        .end();
 
-    // NormalColorVertex kTriangleVertices[] ;
-//     const uint16_t kTriangleIndices[] =
-//             {
-//         0, 1, 2,
-// };
-    std::vector<NormalColorVertex> kTriangleVertices(points.size());
+    std::vector<std::vector<NormalColorVertex>> kTriangleVerticesData;
+    std::vector<bgfx::VertexBufferHandle> vertex_buffers;
+    kTriangleVerticesData.resize(fns.size());
+    vertex_buffers.resize(fns.size());
+    std::optional<Eigen::Vector3d> firstPoint;
+    for (int fileIndex = 0; fileIndex < fns.size(); fileIndex++){
+        const auto &fn = fns[fileIndex];
+        std::cout << "Loading file: " << fn << std::endl;
+        auto points = mandeye::load(fn);
+        std::cout << "Loaded " << points.size() << " points from " << fn << std::endl;
+        if (!firstPoint.has_value()) {
+            firstPoint = points.front().point;
+            std::cout << "First point: " << firstPoint.value() << std::endl;
+        }
+        auto &kTriangleVertices = kTriangleVerticesData[fileIndex];
+        kTriangleVertices.resize(points.size());
+        for (size_t i = 0; i < points.size(); i++)
+        {
+            Eigen::Vector3d p = points[i].point - firstPoint.value();
+            kTriangleVertices[i].position.x = p.x();
+            kTriangleVertices[i].position.y = p.y();
+            kTriangleVertices[i].position.z = p.z();
 
-    auto fp = points.front();
-    for (size_t i = 0; i < points.size(); i++)
-    {
-        Eigen::Vector3d p = points[i].point- fp.point;
-        kTriangleVertices[i].position.x = p.x();
-        kTriangleVertices[i].position.y = p.y();
-        kTriangleVertices[i].position.z = p.z();
+            float colors[4] = {points[i].rgb[0]/255.f, points[i].rgb[1]/255.f, points[i].rgb[2]/255.f, points[i].rgb[3]/255.f};
 
-        float colors[4] = {points[i].rgb[0]/255.f, points[i].rgb[1]/255.f, points[i].rgb[2]/255.f, points[i].rgb[3]/255.f};
+            bx::packRgba8(&kTriangleVertices[i].color, colors);
+        }
+        vertex_buffers[fileIndex] = bgfx::createVertexBuffer(bgfx::makeRef(kTriangleVertices.data(), sizeof(NormalColorVertex)*kTriangleVertices.size()), color_vertex_layout);
 
-        bx::packRgba8(&kTriangleVertices[i].color, colors);
+
     }
-    bgfx::VertexBufferHandle vertex_buffer = bgfx::createVertexBuffer(bgfx::makeRef(kTriangleVertices.data(), sizeof(NormalColorVertex)*kTriangleVertices.size()), color_vertex_layout);
-    //bgfx::IndexBufferHandle index_buffer = bgfx::createIndexBuffer(bgfx::makeRef(kTriangleIndices, sizeof(kTriangleIndices)));
+       //bgfx::IndexBufferHandle index_buffer = bgfx::createIndexBuffer(bgfx::makeRef(kTriangleIndices, sizeof(kTriangleIndices)));
 
     const bgfx::Memory* vs_mem = nullptr;
     const bgfx::Memory* fs_mem = nullptr;
@@ -171,9 +185,18 @@ int main() {
         glm::mat4 mvp = projection * view;
         bgfx::setUniform(u_mvp, &mvp[0]);
 
-        bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_PT_POINTS);
-        bgfx::setVertexBuffer(0, vertex_buffer);
-        bgfx::submit(0, program);
+        for (size_t i = 0; i < kTriangleVerticesData.size(); i++)
+        {
+            bgfx::setState(BGFX_STATE_WRITE_RGB | BGFX_STATE_PT_POINTS);
+            const auto &vertex_buffer = vertex_buffers[i];
+            if (!bgfx::isValid(vertex_buffer)) continue;
+
+            // Set vertex buffer
+            bgfx::setVertexBuffer(0, vertex_buffer);
+
+            // Submit the draw call
+            bgfx::submit(0, program);
+        }
 
         {
             // Get GLFW window size and mouse position
@@ -201,7 +224,13 @@ int main() {
         bgfx::frame();
     }
     imguiDestroy();
-    bgfx::destroy(vertex_buffer);
+    for (size_t i = 0; i < vertex_buffers.size(); i++)
+    {
+        if (bgfx::isValid(vertex_buffers[i]))
+        {
+            bgfx::destroy(vertex_buffers[i]);
+        }
+    }
     // bgfx::destroy(index_buffer);
     bgfx::destroy(vsh);
     bgfx::destroy(fsh);
