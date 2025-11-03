@@ -14,6 +14,7 @@ include_directories(3rd/bgfx.cmake/bgfx/examples)
 
 add_subdirectory(3rd/LASzip)
 include_directories(3rd/bgfx.cmake/LASzip/include/)
+
 include_directories(3rd/LASzip/include)
 # Link only bgfx (not example-common!)
 
