@@ -4,8 +4,8 @@
 [submodule "3rd/LASzip"]
 	path = 3rd/LASzip
 	url = https://github.com/LASzip/LASzip.git
-[submodule "3rd/Eigen"]
-	path = 3rd/Eigen
+[submodule "3rd/eigen"]
+	path = 3rd/eigen
 	url = https://gitlab.com/libeigen/eigen.git
 [submodule "3rd/glfw"]
 	path = 3rd/glfw
