@@ -24,11 +24,14 @@ add_subdirectory(3rd/bgfx.cmake)
 # Add executable
 
 include_directories(3rd/bgfx.cmake/bgfx/examples)
+
 include_directories(3rd/LASzip/include)
 
 add_subdirectory(3rd/LASzip)
 set(LASZIP_INCLUDE_DIR ${EXTERNAL_LIBRARIES_DIRECTORY})
 
+
+include_directories(3rd/LASzip/include)
 # Link only bgfx (not example-common!)
 
 find_package(X11 REQUIRED)
