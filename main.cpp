@@ -1,3 +1,22 @@
+#ifdef _WIN32
+    #ifndef WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
+    #endif
+    #ifndef NOMINMAX
+    #define NOMINMAX
+    #endif
+
+    #include <windows.h>
+    #ifdef _WIN32
+    #ifndef WIN32_LEAN_AND_MEAN
+    #define WIN32_LEAN_AND_MEAN
+    #endif
+    #include <windows.h>
+    #endif
+    #define GLFW_EXPOSE_NATIVE_WIN32
+    #include <GLFW/glfw3native.h>
+
+#endif
 #include <GLFW/glfw3.h>
 #include <bgfx/platform.h>
 #include <bgfx/bgfx.h>
@@ -8,6 +27,7 @@
     #define GLFW_EXPOSE_NATIVE_X11
     #include <GLFW/glfw3native.h>
 #endif
+
 #include <bx/math.h>
 #include "shaders/glsl/vs_triangle.sc.bin.h"
 #include "shaders/glsl/fs_triangle.sc.bin.h"
@@ -67,6 +87,7 @@ int main(int argc, char** argv) {
     for (const auto &fn : fns) {
         std::cout << "File: " << fn << std::endl;
     }
+
 
 
 
